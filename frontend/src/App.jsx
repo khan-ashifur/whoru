@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 // Define app ID and Firebase config (mocked as Firestore is not requested yet)
-// These variables are provided globally in the Canvas environment
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-personality-app-id';
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 
@@ -10,18 +9,11 @@ const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__f
 // THE 'App' FUNCTION COMPONENT. This prevents 'ReferenceError'.
 // ***************************************************************
 
-// Function to clean up extracted text (remove ✅, ⚠️, extra spaces)
-const cleanText = (text) => {
-    // This function will primarily be used on the backend now for AI output parsing
-    // but kept here if needed for any local string processing.
-    return text.replace(/[✅⚠️]/g, '').replace(/\s+/g, ' ').trim();
-};
-
 // Personality Type Names and Short Descriptions (from 16 personalities.docx)
 const personalityTypesData = {
     'ISTJ': { name: "The Inspector", description: "দায়িত্বশীল , সুনির্দিষ্ট ও কার্যনিষ্ঠ" },
     'ISFJ': { name: "The Protector", description: "সহানুভূতিশীল , বিশ্বস্ত ও যত্নবান" },
-    'INFJ': { name: "The Advocate", description: "অন্তর্দর্শী , আদর্শবাদী ও সহানুভূতিশীল" },
+    'INFJ': { name: "The Advocate", description: "অন্তর্দৃষ্টি , আদর্শবাদী ও সহানুভূতিশীল" },
     'INTJ': { name: "The Architect", description: "কৌশলী , স্বনির্ভর ও ভবিষ্যতমুখী" },
     'ISTP': { name: "The Virtuoso", description: "বাস্তবধর্মী , বিশ্লেষণী ও হাতেকলমে দক্ষ" },
     'ISFP': { name: "The Adventurer", description: "শান্তিপ্রিয় , শিল্পমনস্ক ও নমনীয়" },
@@ -106,8 +98,18 @@ const App = () => {
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [userAnswers, setUserAnswers] = useState({}); // Stores answers as {questionIndex: selectedScaleIndex}
     const [resultType, setResultType] = useState(''); // Stores the 4-letter type, e.g., "ESTJ"
-    // structuredDescription will now store the object returned by the backend API
-    const [structuredDescription, setStructuredDescription] = useState(null);
+    
+    // Initialize structuredDescription to a default empty structure, not null
+    const [structuredDescription, setStructuredDescription] = useState({
+        general_summary: "",
+        strengths: [],
+        challenges: [],
+        career_advice: [],
+        relationship_tips: [],
+        self_improvement_habits: [],
+        coach_message: ""
+    });
+
     const [message, setMessage] = useState('');
     const [messageType, setMessageType] = useState('error');
     const [isGeneratingDescription, setIsGeneratingDescription] = useState(false); // To show loading state for AI
@@ -198,11 +200,12 @@ const App = () => {
             const [trait1, trait2] = question.traitPair;
             const scoreValue = answerValue - 3; // Converts 0-6 to -3,-2,-1,0,1,2,3
 
-            if (scoreValue > 0) {
+            if (scoreValue > 0) { // Favors trait1 (E, N, T, J, A)
                 tempScores[trait1] += scoreValue;
-            } else if (scoreValue < 0) {
-                tempScores[trait2] += Math.abs(scoreValue);
+            } else if (scoreValue < 0) { // Favors trait2 (I, S, F, P, X)
+                tempScores[trait2] += Math.abs(scoreValue); // Add positive value for trait2
             }
+            // If scoreValue is 0 (neutral), no change to scores
         });
 
         // *** CRITICAL FIX: Only construct the 4-letter type here ***
@@ -258,7 +261,16 @@ const App = () => {
         setCurrentQuestionIndex(0);
         setUserAnswers({});
         setResultType('');
-        setStructuredDescription(null);
+        // Reset structuredDescription to its default empty state
+        setStructuredDescription({
+            general_summary: "",
+            strengths: [],
+            challenges: [],
+            career_advice: [],
+            relationship_tips: [],
+            self_improvement_habits: [],
+            coach_message: ""
+        });
         setMessage('');
         setMessageType('error');
         setIsGeneratingDescription(false);
@@ -278,42 +290,58 @@ const App = () => {
     // ***************************************************************
     const fetchFullDescriptionFromAI = async (type) => {
         setIsGeneratingDescription(true);
-        setStructuredDescription(null);
+        // Set structuredDescription to default empty structure to clear previous results and show loading.
+        setStructuredDescription({
+            general_summary: "",
+            strengths: [],
+            challenges: [],
+            career_advice: [],
+            relationship_tips: [],
+            self_improvement_habits: [],
+            coach_message: ""
+        });
         setMessage('বিস্তারিত বর্ণনা তৈরি হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন।', 'info');
 
-        // *** THIS IS YOUR NEW, DETAILED COACHING-STYLE PROMPT ***
-        // Ensure the prompt explicitly asks for 'সাধারণ বর্ণনা:' not just general.
-        // Also, it needs to match the regexes in server.js exactly.
+        // *** THIS IS YOUR NEW, DETAILED COACHING-STYLE PROMPT (JSON-focused) ***
         const descriptionPrompt = `
 ব্যক্তিত্ব টাইপ: ${type}
 
-এই ব্যবহারকারী "আপনি" সম্বোধনে বাংলায় একটি কোচিং-স্টাইল ফলাফল চান। লেখাটি যেন একজন অভিজ্ঞ জীবন-পরামর্শক (life coach) বুঝিয়ে বলছেন — আত্মবিশ্বাস জাগানিয়া, বাস্তবসম্মত ও অনুপ্রেরণামূলক ভঙ্গিতে। নীচের কাঠামো অনুসরণ করুন:
+"আপনি" সম্বোধনে, একজন অভিজ্ঞ জীবন-পরামর্শকের ভঙ্গিতে বাংলায় একটি JSON অবজেক্ট তৈরি করুন—বাস্তবসম্মত, অনুপ্রেরণামূলক, এবং সহানুভূতিশীল। JSON অবজেক্টের কী (keys) এবং তাদের মান (values) নিম্নলিখিত কাঠামো কঠোরভাবে অনুসরণ করবে। উত্তরটি শুধুমাত্র একটি বৈধ JSON অবজেক্ট হবে, কোনো অতিরিক্ত টেক্সট বা ভূমিকা ছাড়া।
 
-সাধারণ বর্ণনা:
-[এখানে ব্যক্তিত্বের সাধারণ বৈশিষ্ট্য এবং প্রকৃতি সম্পর্কে বিস্তারিত লিখুন।]
-
-🔥 আপনার ৫টি প্রধান শক্তি:
-- প্রতিটি শক্তির নাম দিন এবং ব্যাখ্যা করুন এটি ব্যবহারকারীর জীবনে কীভাবে প্রভাব ফেলে।
-
-⚠️ আপনার ৩টি চ্যালেঞ্জ:
-- চ্যালেঞ্জগুলো সহানুভূতির সাথে তুলে ধরুন। প্রতিটির জন্য ১টি সুনির্দিষ্ট উপদেশ বা স্টেপ দিন।
-
-🧭 ক্যারিয়ার পরামর্শ:
-- কোন ক্যারিয়ারগুলো সবচেয়ে মানানসই, কেন। ১টি ছোট কাজ যা আজ শুরু করা যায়, তাও উল্লেখ করুন।
-
-❤️ সম্পর্কের ক্ষেত্রে:
-- সম্পর্ক বা বন্ধুত্বে ব্যবহারকারীর সাধারণ ধরণ ব্যাখ্যা করুন। একটি সম্পর্ক উন্নয়নের পরামর্শ দিন।
-
-🧠 আত্মউন্নয়নের স্টেপস:
-- ৩টি সহজ অভ্যাস যা প্রতিদিন অনুশীলন করা যায়, সেগুলোর নাম এবং সংক্ষিপ্ত ব্যাখ্যা দিন।
-
-🗣️ কোচের বার্তা:
-- একটি আবেগময় ও প্রেরণামূলক বার্তা লিখুন। শেষ লাইনে সরাসরি আহ্বান দিন (যেমন “আজই শুরু করুন”)।
-
-সব কিছু বাংলায় লিখুন, যেন সত্যি একজন মানুষ সামনে বসে কথা বলছে।
+{
+  "general_summary": "৫–৬ লাইনে ব্যবহারকারী কেমন মানুষ, কীভাবে চিন্তা করেন এবং কী তাকে চালিত করে তা ব্যাখ্যা করুন।",
+  "strengths": [
+    {"name": "শক্তির ১", "explanation": "১–২ লাইনে ব্যাখ্যা দিন শক্তিটি আপনার জীবনে কীভাবে কাজে লাগে"},
+    {"name": "শক্তির ২", "explanation": "১–২ লাইনে ব্যাখ্যা দিন শক্তিটি আপনার জীবনে কীভাবে কাজে লাগে"},
+    {"name": "শক্তির ৩", "explanation": "১–২ লাইনে ব্যাখ্যা দিন শক্তিটি আপনার জীবনে কীভাবে কাজে লাগে"},
+    {"name": "শক্তির ৪", "explanation": "১–২ লাইনে ব্যাখ্যা দিন শক্তিটি আপনার জীবনে কীভাবে কাজে লাগে"},
+    {"name": "শক্তির ৫", "explanation": "১–২ লাইনে ব্যাখ্যা দিন শক্তিটি আপনার জীবনে কীভাবে কাজে লাগে"}
+  ],
+  "challenges": [
+    {"description": "চ্যালেঞ্জ ১ সংক্ষেপে তুলে ধরুন", "advice": "১টি বাস্তবসম্মত উপদেশ বা করণীয় লিখুন"},
+    {"description": "চ্যালেঞ্জ ২ সংক্ষেপে তুলে ধরুন", "advice": "১টি বাস্তবসম্মত উপদেশ বা করণীয় লিখুন"},
+    {"description": "চ্যালেঞ্জ ৩ সংক্ষেপে তুলে ধরুন", "advice": "১টি বাস্তবসম্মত উপদেশ বা করণীয় লিখুন"}
+  ],
+  "career_advice": [
+    {"field": "ক্যারিয়ার সেক্টর ১", "reason": "কেন মানানসই", "action": "আজ থেকে শুরু করার জন্য ১টি ছোট কাজ"},
+    {"field": "ক্যারিয়ার সেক্টর ২", "reason": "কেন মানানসই", "action": "আজ থেকে শুরু করার জন্য ১টি ছোট কাজ"},
+    {"field": "ক্যারিয়ার সেক্টর ৩", "reason": "কেন মানানসই", "action": "আজ থেকে শুরু করার জন্য ১টি ছোট কাজ"}
+  ],
+  "relationship_tips": [
+    {"general_behavior": "সম্পর্ক বা বন্ধুত্বে ব্যবহারকারীর সাধারণ ধরণ, ২–৩ লাইনে।", "tip": "১টি সম্পর্ক উন্নয়নের টিপ।"}
+  ],
+  "self_improvement_habits": [
+    {"habit": "অভ্যাস ১", "benefit": "এটি কীভাবে উপকারে আসে"},
+    {"habit": "অভ্যাস ২", "benefit": "এটি কীভাবে উপকারে আসে"},
+    {"habit": "অভ্যাস ৩", "benefit": "এটি কীভাবে উপকারে আসে"}
+  ],
+  "coach_message": "একটি আবেগময়, আত্মবিশ্বাস-জাগানিয়া সমাপ্তি বার্তা দিন। শেষ লাইনে সরাসরি আহ্বান থাকুক (যেমন: “আজই শুরু করুন”)।"
+}
 `;
 
         try {
+            console.log("Sending prompt to backend:", descriptionPrompt); // Log the prompt being sent
+
             const response = await fetch('http://localhost:5000/api/generate-description', {
                 method: 'POST',
                 headers: {
@@ -330,7 +358,7 @@ const App = () => {
             const data = await response.json();
             // Assuming data.description is the parsed object from your server.js
             if (data.description) {
-                setStructuredDescription(data.description);
+                setStructuredDescription(data.description); // Update state with the received structured object
                 setMessage('', ''); // Clear loading message on success
             } else {
                 throw new Error("API did not return structured description.");
@@ -338,12 +366,13 @@ const App = () => {
 
         } catch (error) {
             console.error("বিস্তারিত বর্ণনা আনতে ব্যর্থ:", error);
+            // On error, set the description to a user-friendly error message within the structure
             setStructuredDescription({
-                general: "বিস্তারিত বর্ণনা আনতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।",
-                strengths: [], challenges: [], career_suggestions: [], relationship_tips: [], start_small_steps: [],
-                coach_message: "" // Initialize coach_message to avoid errors if not present
+                general_summary: "বিস্তারিত বর্ণনা লোড করতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।",
+                strengths: [], challenges: [], career_advice: [], relationship_tips: [], self_improvement_habits: [],
+                coach_message: ""
             });
-            setMessage("বিস্তারিত বর্ণনা আনতে সমস্যা হয়েছে।", 'error');
+            setMessage("বিস্তারিত বর্ণনা লোড করতে সমস্যা হয়েছে।", 'error');
         } finally {
             setIsGeneratingDescription(false);
         }
@@ -503,20 +532,34 @@ const App = () => {
                                 <p className="text-gray-600 text-center">বিস্তারিত বর্ণনা তৈরি হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন।</p>
                             ) : (
                                 <>
-                                    {/* General Description */}
-                                    {structuredDescription?.general && (
+                                    {/* General Description - Renamed to match prompt */}
+                                    {structuredDescription?.general_summary ? (
                                         <>
-                                            <h3 className="text-xl font-bold mb-2">সাধারণ বর্ণনা:</h3>
-                                            <p className="mb-4">{structuredDescription.general}</p>
+                                            <h3 className="text-xl font-bold mb-2">আপনার ব্যক্তিত্বের সারসংক্ষেপ:</h3>
+                                            <p className="mb-4">{structuredDescription.general_summary}</p>
                                         </>
+                                    ) : (
+                                        // Only show this specific error if generation has finished and summary is still empty
+                                        <p className="text-center text-red-500">
+                                            বিস্তারিত বর্ণনা লোড করতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন বা কুইজটি আবার দিন।
+                                        </p>
                                     )}
 
                                     {/* Strengths */}
                                     {structuredDescription?.strengths?.length > 0 && (
                                         <div className="mt-6">
-                                            <h3 className="text-xl font-bold mb-2">🔥 আপনার ৫টি প্রধান শক্তি:</h3>
+                                            <h3 className="text-xl font-bold mb-2">আপনার ৫টি প্রধান শক্তি:</h3>
                                             <ul className="list-disc list-inside space-y-1">
-                                                {structuredDescription.strengths.map((item, idx) => <li key={`strength-${idx}`}>{item}</li>)}
+                                                {structuredDescription.strengths.map((item, idx) => (
+                                                    <li key={`strength-${idx}`}>
+                                                        {/* Render based on if item is string or object */}
+                                                        {typeof item === 'object' && item !== null ? (
+                                                            <><strong>{item.name}:</strong> {item.explanation}</>
+                                                        ) : (
+                                                            item // Fallback if not object
+                                                        )}
+                                                    </li>
+                                                ))}
                                             </ul>
                                         </div>
                                     )}
@@ -524,19 +567,38 @@ const App = () => {
                                     {/* Challenges */}
                                     {structuredDescription?.challenges?.length > 0 && (
                                         <div className="mt-6">
-                                            <h3 className="text-xl font-bold mb-2">⚠️ আপনার ৩টি চ্যালেঞ্জ:</h3>
+                                            <h3 className="text-xl font-bold mb-2">আপনার ৩টি চ্যালেঞ্জ:</h3>
                                             <ul className="list-disc list-inside space-y-1">
-                                                {structuredDescription.challenges.map((item, idx) => <li key={`challenge-${idx}`}>{item}</li>)}
+                                                {structuredDescription.challenges.map((item, idx) => (
+                                                    <li key={`challenge-${idx}`}>
+                                                        {typeof item === 'object' && item !== null ? (
+                                                            <><strong>{item.description}:</strong> {item.advice}</>
+                                                        ) : (
+                                                            item
+                                                        )}
+                                                    </li>
+                                                ))}
                                             </ul>
                                         </div>
                                     )}
 
                                     {/* Career Suggestions */}
-                                    {structuredDescription?.career_suggestions?.length > 0 && (
+                                    {structuredDescription?.career_advice?.length > 0 && (
                                         <div className="mt-6">
-                                            <h3 className="text-xl font-bold mb-2">🧭 ক্যারিয়ার পরামর্শ:</h3>
+                                            <h3 className="text-xl font-bold mb-2">ক্যারিয়ার পরামর্শ:</h3>
                                             <ul className="list-disc list-inside space-y-1">
-                                                {structuredDescription.career_suggestions.map((item, idx) => <li key={`career-${idx}`}>{item}</li>)}
+                                                {structuredDescription.career_advice.map((item, idx) => (
+                                                    <li key={`career-${idx}`}>
+                                                        {typeof item === 'object' && item !== null ? (
+                                                            <>
+                                                                <strong>{item.field}:</strong> {item.reason}
+                                                                {item.action && ` - ${item.action}`}
+                                                            </>
+                                                        ) : (
+                                                            item
+                                                        )}
+                                                    </li>
+                                                ))}
                                             </ul>
                                         </div>
                                     )}
@@ -544,19 +606,37 @@ const App = () => {
                                     {/* Relationship Tips */}
                                     {structuredDescription?.relationship_tips?.length > 0 && (
                                         <div className="mt-6">
-                                            <h3 className="text-xl font-bold mb-2">❤️ সম্পর্কের ক্ষেত্রে:</h3>
+                                            <h3 className="text-xl font-bold mb-2">সম্পর্ক ও বন্ধুত্ব:</h3>
                                             <ul className="list-disc list-inside space-y-1">
-                                                {structuredDescription.relationship_tips.map((item, idx) => <li key={`relationship-${idx}`}>{item}</li>)}
+                                                {structuredDescription.relationship_tips.map((item, idx) => (
+                                                    <li key={`relationship-${idx}`}>
+                                                        {typeof item === 'object' && item !== null ? (
+                                                            <>
+                                                                <strong>{item.general_behavior}:</strong> {item.tip}
+                                                            </>
+                                                        ) : (
+                                                            item
+                                                        )}
+                                                    </li>
+                                                ))}
                                             </ul>
                                         </div>
                                     )}
 
-                                    {/* Self-Improvement Steps */}
-                                    {structuredDescription?.start_small_steps?.length > 0 && (
+                                    {/* Self-Improvement Habits */}
+                                    {structuredDescription?.self_improvement_habits?.length > 0 && (
                                         <div className="mt-6">
-                                            <h3 className="text-xl font-bold mb-2">🧠 আত্মউন্নয়নের স্টেপস:</h3>
+                                            <h3 className="text-xl font-bold mb-2">আত্মউন্নয়নের অভ্যাস:</h3>
                                             <ul className="list-disc list-inside space-y-1">
-                                                {structuredDescription.start_small_steps.map((item, idx) => <li key={`steps-${idx}`}>{item}</li>)}
+                                                {structuredDescription.self_improvement_habits.map((item, idx) => (
+                                                    <li key={`steps-${idx}`}>
+                                                        {typeof item === 'object' && item !== null ? (
+                                                            <><strong>{item.habit}:</strong> {item.benefit}</>
+                                                        ) : (
+                                                            item
+                                                        )}
+                                                    </li>
+                                                ))}
                                             </ul>
                                         </div>
                                     )}
@@ -564,16 +644,9 @@ const App = () => {
                                     {/* Coach's Message */}
                                     {structuredDescription?.coach_message && (
                                         <div className="mt-6">
-                                            <h3 className="text-xl font-bold mb-2">🗣️ কোচের বার্তা:</h3>
+                                            <h3 className="text-xl font-bold mb-2">কোচের বার্তা:</h3>
                                             <p>{structuredDescription.coach_message}</p>
                                         </div>
-                                    )}
-
-                                    {/* Fallback message if no structured description data is available after attempt */}
-                                    {!structuredDescription?.general && structuredDescription !== null && !isGeneratingDescription && (
-                                        <p className="text-center text-red-500">
-                                            বিস্তারিত বর্ণনা লোড করতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন বা কুইজটি আবার দিন।
-                                        </p>
                                     )}
                                 </>
                             )}
