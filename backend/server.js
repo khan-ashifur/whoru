@@ -24,6 +24,32 @@ const openai = new OpenAI({
     apiKey: openaiApiKey,
 });
 
+// Function to clean individual text items (e.g., list items)
+const cleanAndTrimText = (text) => {
+    if (typeof text !== 'string') return ""; // Ensure it's a string before attempting string methods
+    // Remove leading dashes, numbers, emojis, and common bullet points/symbols
+    return text.replace(/^- /, '') // Remove leading dash and space
+               .replace(/(\d+\.?\s*[\-\.]?\s*)/g, '') // Remove numbers (e.g., "1.", "2. ") and their separators
+               .replace(/[🔥⚠️🧭❤️🧠🗣️✅•]/g, '') // Remove emojis and common bullet symbols
+               .replace(/\s+/g, ' ') // Replace multiple spaces/newlines with single space
+               .trim();
+};
+
+// Define default empty structured object for reliable frontend rendering
+const defaultStructuredDescription = {
+    general_summary: "",
+    strengths: [],
+    challenges: [],
+    career_advice: [],
+    relationship_tips: [],
+    self_improvement_habits: [],
+    coach_message: ""
+};
+
+// Define defaultStructuredDescriptionKeys globally for consistent mapping in regex fallback
+const defaultStructuredDescriptionKeys = Object.keys(defaultStructuredDescription);
+
+
 // --- API Endpoint for Personality Description Generation ---
 app.post('/api/generate-description', async (req, res) => {
     const { personalityType, descriptionPrompt } = req.body;
@@ -32,38 +58,16 @@ app.post('/api/generate-description', async (req, res) => {
         return res.status(400).json({ error: "Missing personalityType or descriptionPrompt in request body" });
     }
 
-    // Function to clean individual text items (e.g., list items)
-    const cleanAndTrimText = (text) => {
-        if (typeof text !== 'string') return "";
-        // Remove leading dashes, numbers like '1.', '2.', emojis, and common bullet points/symbols
-        return text.replace(/^- /, '') // Remove leading dash and space
-                   .replace(/(\d+\.?\s*[\-\.]?\s*)/g, '') // Remove numbers (e.g., "1.", "2. ") and their separators
-                   .replace(/[🔥⚠️🧭❤️🧠🗣️✅•]/g, '') // Remove emojis and common bullet symbols
-                   .replace(/\s+/g, ' ') // Replace multiple spaces/newlines with single space
-                   .trim();
-    };
-
-    // Define default empty structured object for reliable frontend rendering
-    const defaultStructuredDescription = {
-        general_summary: "",
-        strengths: [],
-        challenges: [],
-        career_advice: [],
-        relationship_tips: [],
-        self_improvement_habits: [],
-        coach_message: ""
-    };
-
     try {
         console.log(`Generating description for type: ${personalityType}`);
         console.log("Prompt sent to OpenAI:\n", descriptionPrompt);
 
         const chatCompletion = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo", // Consider "gpt-4" for best results with JSON output and adherence
+            model: "gpt-4", // Using GPT-4 as agreed for better adherence
             messages: [
                 {
                     role: "system",
-                    content: `তুমি একজন অত্যন্ত দক্ষ এবং অভিজ্ঞ বাংলা ভাষাভাষী জীবন-পরামর্শক। তোমার উত্তরটি একটি বৈধ JSON অবজেক্ট হিসেবে প্রদান করবে, কোনো অতিরিক্ত ভূমিকা বা উপসংহার ছাড়া। JSON অবজেক্টের কী (keys) এবং তাদের মান (values) নিম্নলিখিত কাঠামো কঠোরভাবে অনুসরণ করবে:
+                    content: `তুমি একজন অত্যন্ত দক্ষ এবং অভিজ্ঞ বাংলা ভাষাভাষী জীবন-পরামর্শক। তোমার উত্তরটি একটি বৈধ JSON অবজেক্ট হিসেবে প্রদান করবে, কোনো অতিরিক্ত ভূমিকা বা উপসংহার ছাড়া। কোনো ইমোজি, প্রতীক বা অপ্রয়োজনীয় ইংরেজি শব্দ ব্যবহার করবে না। JSON অবজেক্টের কী (keys) এবং তাদের মান (values) নিম্নলিখিত কাঠামো কঠোরভাবে অনুসরণ করবে:
                     {
                       "general_summary": "string",
                       "strengths": [{"name": "string", "explanation": "string"}, ...],
@@ -73,7 +77,8 @@ app.post('/api/generate-description', async (req, res) => {
                       "self_improvement_habits": [{"habit": "string", "benefit": "string"}, ...],
                       "coach_message": "string"
                     }
-                    কোনো ইমোজি, প্রতীক বা অপ্রয়োজনীয় ইংরেজি শব্দ ব্যবহার করবে না। প্রতিটি স্ট্রিং ভ্যালু শুধুমাত্র বাংলায় লিখবে। তালিকাগুলো অবজেক্টের অ্যারে (array of objects) হবে, যেখানে প্রতিটি অবজেক্টের মধ্যে সঠিক কী (যেমন name, explanation, description, advice, field, reason, action, general_behavior, tip, habit, benefit) থাকবে এবং তাদের মান বাংলায় উপযুক্ত তথ্য দেবে।`
+                    
+                    ⚠️ গুরুত্বপূর্ণ: তুমি পুরো JSON অবজেক্টকে আবার কোনো ভ্যালু হিসেবে দেবে না। প্রতিটি কী (key) এর মান (value) হবে আলাদা তথ্য — একটি JSON অবজেক্টের ভিতরে আরেকটি সম্পূর্ণ JSON অবজেক্ট দেবে না। প্রতিটি স্ট্রিং ভ্যালু শুধুমাত্র বাংলায় লিখবে। তালিকাগুলো অবজেক্টের অ্যারে (array of objects) হবে, যেখানে প্রতিটি অবজেক্টের মধ্যে সঠিক কী (যেমন name, explanation, description, advice, field, reason, action, general_behavior, tip, habit, benefit) থাকবে এবং তাদের মান বাংলায় উপযুক্ত তথ্য দেবে।`
                 },
                 {
                     role: "user",
@@ -93,20 +98,21 @@ app.post('/api/generate-description', async (req, res) => {
         // --- Stage 1: Attempt Strict JSON Parsing ---
         try {
             // Aggressively find potential JSON object in the raw text
-            const jsonStartIndex = aiGeneratedRawText.indexOf('{');
-            const jsonEndIndex = aiGeneratedRawText.lastIndexOf('}');
-            let trimmedJsonString = aiGeneratedRawText;
+            // This regex tries to find a JSON object that might be wrapped in other text
+            const jsonMatch = aiGeneratedRawText.match(/```json\s*([\s\S]*?)\s*```/i) || aiGeneratedRawText.match(/\{[\s\S]*\}/);
+            let rawJsonString = jsonMatch ? jsonMatch[1] || jsonMatch[0] : aiGeneratedRawText;
 
-            if (jsonStartIndex !== -1 && jsonEndIndex !== -1 && jsonEndIndex > jsonStartIndex) {
-                trimmedJsonString = aiGeneratedRawText.substring(jsonStartIndex, jsonEndIndex + 1);
-            }
+            // Attempt to fix common JSON errors before parsing
+            rawJsonString = rawJsonString.replace(/,\s*([\]}])/g, '$1'); // Remove trailing commas before ] or }
+            rawJsonString = rawJsonString.replace(/[\r\n]+/g, ''); // Remove newlines (might help with parsing)
             
-            // Attempt to parse the cleaned string as JSON
-            const parsedJson = JSON.parse(trimmedJsonString);
+            // Re-attempt parse with the (hopefully) cleaner string
+            const parsedJson = JSON.parse(rawJsonString);
             console.log("Successfully parsed AI response as JSON.");
 
-            // Apply cleanAndTrimText to all string values within the parsed JSON for robustness
+            // Apply cleanAndTrimText to all string values in the parsed JSON
             for (const key in parsedJson) {
+                // Ensure the value is not another object when it should be a string
                 if (typeof parsedJson[key] === 'string') {
                     finalParsedData[key] = cleanAndTrimText(parsedJson[key]);
                 } else if (Array.isArray(parsedJson[key])) {
@@ -126,9 +132,15 @@ app.post('/api/generate-description', async (req, res) => {
                         if (typeof item === 'object' && item !== null) return Object.values(item).some(val => typeof val === 'string' ? val.length > 0 : true);
                         return false;
                     });
-                } else {
-                    // Assign non-string/non-array types directly
-                    finalParsedData[key] = parsedJson[key];
+                } else if (typeof parsedJson[key] === 'object' && parsedJson[key] !== null) {
+                    // If an object is found where a string was expected (e.g., general_summary is an object),
+                    // set it to default. This prevents the entire JSON blob being assigned.
+                    if (['general_summary', 'coach_message'].includes(key)) {
+                        finalParsedData[key] = defaultStructuredDescription[key];
+                        console.warn(`Key ${key} was an unexpected object. Set to default.`);
+                    } else {
+                        finalParsedData[key] = parsedJson[key]; // Keep other unexpected objects for now
+                    }
                 }
             }
 
@@ -138,81 +150,78 @@ app.post('/api/generate-description', async (req, res) => {
         } catch (jsonParseError) {
             console.warn("AI response was not perfect JSON. Falling back to robust regex parsing...", jsonParseError.message);
             console.error("JSON Parse Error Details:", jsonParseError);
-            // Fall through to regex parsing if JSON fails
-        }
+            console.error("Problematic AI Raw Text:", aiGeneratedRawText);
 
-        // --- Stage 2: Robust Regex Fallback if JSON Parsing Fails ---
-        // This attempts to extract sections based on headings, even from unstructured text.
-        let regexParsedDescription = { ...defaultStructuredDescription }; // Use this for regex results
-        let currentParseRemainder = aiGeneratedRawText;
-
-        const sectionHeaders = [
-            "আপনার ব্যক্তিত্বের সারসংক্ষেপ:",
-            "আপনার ৫টি প্রধান শক্তি:",
-            "আপনার ৩টি চ্যালেঞ্জ:",
-            "ক্যারিয়ার পরামর্শ:",
-            "সম্পর্ক ও বন্ধুত্ব:",
-            "আত্মউন্নয়নের অভ্যাস:",
-            "কোচের বার্তা:",
-        ];
-
-        // This approach extracts content between two known headers.
-        // It's more resilient than splitting the whole text at once if headers are sometimes missing.
-        let lastHeaderIndex = 0;
-        for (let i = 0; i < sectionHeaders.length; i++) {
-            const currentHeader = sectionHeaders[i];
-            const nextHeader = sectionHeaders[i + 1];
-            const currentKey = defaultStructuredDescriptionKeys[i]; // Map index to key
+            // --- Stage 2: Robust Regex Fallback if JSON Parsing Fails ---
+            let regexParsedDescription = { ...defaultStructuredDescription }; // Use this for regex results
             
-            const escapedCurrentHeader = currentHeader.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            let regex;
-            if (nextHeader) {
-                const escapedNextHeader = nextHeader.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                regex = new RegExp(`${escapedCurrentHeader}([\\s\\S]*?)(?=${escapedNextHeader})`, 'i');
-            } else {
-                regex = new RegExp(`${escapedCurrentHeader}([\\s\\S]*)$`, 'i'); // Last section, match till end
-            }
+            const sectionHeaders = [
+                "আপনার ব্যক্তিত্বের সারসংক্ষেপ:",
+                "আপনার ৫টি প্রধান শক্তি:",
+                "আপনার ৩টি চ্যালেঞ্জ:",
+                "ক্যারিয়ার পরামর্শ:",
+                "সম্পর্ক ও বন্ধুত্ব:",
+                "আত্মউন্নয়নের অভ্যাস:",
+                "কোচের বার্তা:",
+            ];
 
-            const match = aiGeneratedRawText.substring(lastHeaderIndex).match(regex);
-
-            if (match && match[1]) {
-                let rawContent = match[1].trim();
-
-                if (currentKey === 'general_summary' || currentKey === 'coach_message') {
-                    regexParsedDescription[currentKey] = cleanAndTrimText(rawContent);
+            let lastHeaderIndex = 0;
+            for (let i = 0; i < sectionHeaders.length; i++) {
+                const currentHeader = sectionHeaders[i];
+                const nextHeader = sectionHeaders[i + 1];
+                const currentKey = defaultStructuredDescriptionKeys[i]; // Access from global array
+                
+                const escapedCurrentHeader = currentHeader.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                let regex;
+                if (nextHeader) {
+                    const escapedNextHeader = nextHeader.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    regex = new RegExp(`${escapedCurrentHeader}([\\s\\S]*?)(?=${escapedNextHeader})`, 'i');
                 } else {
-                    const items = rawContent.split('\n')
-                                            .map(line => cleanAndTrimText(line))
-                                            .filter(line => line.length > 0);
-                    
-                    // Attempt to structure list items into objects (e.g., "Name: Explanation")
-                    regexParsedDescription[currentKey] = items.map(item => {
-                        if (item.includes(':')) {
-                            const parts = item.split(':');
-                            // Custom logic for different list item structures
-                            if (currentKey === 'strengths') return { name: cleanAndTrimText(parts[0]), explanation: cleanAndTrimText(parts.slice(1).join(':')) };
-                            if (currentKey === 'challenges') return { description: cleanAndTrimText(parts[0]), advice: cleanAndTrimText(parts.slice(1).join(':')) };
-                            if (currentKey === 'career_advice' && parts.length >= 2) return { field: cleanAndTrimText(parts[0]), reason: cleanAndTrimText(parts[1]), action: cleanAndTrimText(parts.slice(2).join(':') || '') }; // action optional
-                            if (currentKey === 'relationship_tips' && parts.length >= 2) return { general_behavior: cleanAndTrimText(parts[0]), tip: cleanAndTrimText(parts.slice(1).join(':')) };
-                            if (currentKey === 'self_improvement_habits' && parts.length >= 2) return { habit: cleanAndTrimText(parts[0]), benefit: cleanAndTrimText(parts.slice(1).join(':')) };
-                        }
-                        return item; // Fallback to simple string if structure not matched
-                    });
+                    regex = new RegExp(`${escapedCurrentHeader}([\\s\\S]*)$`, 'i'); // Last section, match till end
                 }
-                lastHeaderIndex += aiGeneratedRawText.substring(lastHeaderIndex).indexOf(currentHeader) + currentHeader.length + rawContent.length;
-            } else {
-                console.warn(`Regex fallback failed to find content for section: ${currentKey}`);
+
+                const match = aiGeneratedRawText.substring(lastHeaderIndex).match(regex);
+
+                if (match && match[1]) {
+                    let rawContent = match[1].trim();
+
+                    if (currentKey === 'general_summary' || currentKey === 'coach_message') {
+                        regexParsedDescription[currentKey] = cleanAndTrimText(rawContent);
+                    } else {
+                        const items = rawContent.split('\n')
+                                                .map(line => cleanAndTrimText(line))
+                                                .filter(line => line.length > 0);
+                        
+                        // Attempt to structure list items into objects (e.g., "Name: Explanation")
+                        regexParsedDescription[currentKey] = items.map(item => {
+                            if (item.includes(':')) {
+                                const parts = item.split(':');
+                                // Custom logic for different list item structures
+                                if (currentKey === 'strengths') return { name: cleanAndTrimText(parts[0]), explanation: cleanAndTrimText(parts.slice(1).join(':')) };
+                                if (currentKey === 'challenges') return { description: cleanAndTrimText(parts[0]), advice: cleanAndTrimText(parts.slice(1).join(':')) };
+                                if (currentKey === 'career_advice' && parts.length >= 2) return { field: cleanAndTrimText(parts[0]), reason: cleanAndTrimText(parts[1]), action: cleanAndTrimText(parts.slice(2).join(':') || '') };
+                                if (currentKey === 'relationship_tips' && parts.length >= 2) return { general_behavior: cleanAndTrimText(parts[0]), tip: cleanAndTrimText(parts.slice(1).join(':')) };
+                                if (currentKey === 'self_improvement_habits' && parts.length >= 2) return { habit: cleanAndTrimText(parts[0]), benefit: cleanAndTrimText(parts.slice(1).join(':')) };
+                            }
+                            return item; // Fallback to simple string if structure not matched
+                        });
+                    }
+                    // Update lastHeaderIndex to continue parsing from after the current section
+                    lastHeaderIndex += aiGeneratedRawText.substring(lastHeaderIndex).indexOf(match[0]) + match[0].length;
+                } else {
+                    console.warn(`Regex fallback failed to find content for section: ${currentKey}`);
+                }
+            }
+            
+            // Assign regex parsed data to finalParsedData (overwriting defaults)
+            Object.assign(finalParsedData, regexParsedDescription);
+
+            // Final general summary fallback: if still empty, put all raw AI text into it (if not already assigned by JSON)
+            if (!finalParsedData.general_summary && aiGeneratedRawText.length > 0) {
+                finalParsedData.general_summary = cleanAndTrimText(aiGeneratedRawText);
             }
         }
         
-        // Ensure all keys are present even if regex failed for some
-        Object.assign(finalParsedData, regexParsedDescription);
-
-        // Final general summary fallback: if still empty, put all raw AI text into it (if not already assigned by JSON)
-        if (!finalParsedData.general_summary && aiGeneratedRawText.length > 0) {
-            finalParsedData.general_summary = cleanAndTrimText(aiGeneratedRawText);
-        }
-
         // Final sanity check on types before sending to frontend
         if (typeof finalParsedData.general_summary !== 'string') finalParsedData.general_summary = "";
         if (!Array.isArray(finalParsedData.strengths)) finalParsedData.strengths = [];

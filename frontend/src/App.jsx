@@ -290,7 +290,7 @@ const App = () => {
     // ***************************************************************
     const fetchFullDescriptionFromAI = async (type) => {
         setIsGeneratingDescription(true);
-        // Set structuredDescription to default empty structure to clear previous results and show loading.
+        // Set structuredDescription to default empty structure, and show a loading message
         setStructuredDescription({
             general_summary: "",
             strengths: [],
@@ -553,10 +553,10 @@ const App = () => {
                                                 {structuredDescription.strengths.map((item, idx) => (
                                                     <li key={`strength-${idx}`}>
                                                         {/* Render based on if item is string or object */}
-                                                        {typeof item === 'object' && item !== null ? (
+                                                        {typeof item === 'object' && item !== null && item.name && item.explanation ? (
                                                             <><strong>{item.name}:</strong> {item.explanation}</>
                                                         ) : (
-                                                            item // Fallback if not object
+                                                            item // Fallback if not object or malformed
                                                         )}
                                                     </li>
                                                 ))}
@@ -571,7 +571,7 @@ const App = () => {
                                             <ul className="list-disc list-inside space-y-1">
                                                 {structuredDescription.challenges.map((item, idx) => (
                                                     <li key={`challenge-${idx}`}>
-                                                        {typeof item === 'object' && item !== null ? (
+                                                        {typeof item === 'object' && item !== null && item.description && item.advice ? (
                                                             <><strong>{item.description}:</strong> {item.advice}</>
                                                         ) : (
                                                             item
@@ -589,7 +589,7 @@ const App = () => {
                                             <ul className="list-disc list-inside space-y-1">
                                                 {structuredDescription.career_advice.map((item, idx) => (
                                                     <li key={`career-${idx}`}>
-                                                        {typeof item === 'object' && item !== null ? (
+                                                        {typeof item === 'object' && item !== null && item.field && item.reason ? (
                                                             <>
                                                                 <strong>{item.field}:</strong> {item.reason}
                                                                 {item.action && ` - ${item.action}`}
@@ -610,7 +610,7 @@ const App = () => {
                                             <ul className="list-disc list-inside space-y-1">
                                                 {structuredDescription.relationship_tips.map((item, idx) => (
                                                     <li key={`relationship-${idx}`}>
-                                                        {typeof item === 'object' && item !== null ? (
+                                                        {typeof item === 'object' && item !== null && item.general_behavior && item.tip ? (
                                                             <>
                                                                 <strong>{item.general_behavior}:</strong> {item.tip}
                                                             </>
@@ -630,7 +630,7 @@ const App = () => {
                                             <ul className="list-disc list-inside space-y-1">
                                                 {structuredDescription.self_improvement_habits.map((item, idx) => (
                                                     <li key={`steps-${idx}`}>
-                                                        {typeof item === 'object' && item !== null ? (
+                                                        {typeof item === 'object' && item !== null && item.habit && item.benefit ? (
                                                             <><strong>{item.habit}:</strong> {item.benefit}</>
                                                         ) : (
                                                             item
